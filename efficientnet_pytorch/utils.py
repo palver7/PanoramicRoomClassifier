@@ -11,7 +11,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.utils import model_zoo
-from torchvision.ops.equi_conv import equi_conv2d 
+from torchvision.ops.equi_conv import equi_conv2d, EquiConv2d 
 
 ########################################################################
 ############### HELPERS FUNCTIONS FOR MODEL ARCHITECTURE ###############
@@ -101,7 +101,7 @@ def get_same_padding_conv2d(image_size=None):
         return partial(Conv2dStaticSamePadding, image_size=image_size)
 
 
-class Conv2dDynamicSamePadding(nn.Conv2d):
+class Conv2dDynamicSamePadding(EquiConv2d):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
@@ -120,7 +120,7 @@ class Conv2dDynamicSamePadding(nn.Conv2d):
         return equi_conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation)
 
 
-class Conv2dStaticSamePadding(nn.Conv2d):
+class Conv2dStaticSamePadding(EquiConv2d):
     """ 2D Convolutions like TensorFlow, for a fixed image size"""
 
     def __init__(self, in_channels, out_channels, kernel_size, image_size=None, **kwargs):
