@@ -114,7 +114,7 @@ venv.bak/
 # Custom
 tensorflow/
 example/test*
-*.pth*
+#*.pth*
 examples/imagenet/data/
 !examples/imagenet/data/README.md
 tmp
