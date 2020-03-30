@@ -47,8 +47,7 @@ def _test(args):
                 dist.get_rank(), torch.cuda.is_available(), args.num_gpus))
     """            
     class_map = ('bathroom', 'bedroom', 'dining_room', 'Exterior', 'Interior', 'kitchen', 'living_room')
-    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info("Device Type: {}".format(device))
 
     logger.info("Loading dataset from imagefolder")
