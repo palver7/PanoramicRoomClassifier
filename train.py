@@ -50,7 +50,7 @@ class SplitDataset(Dataset):
 
     def __getitem__(self, idx):
         
-        image, EM, CM = self.images_data[idx]
+        image, label = self.images_data[idx]
         #EM = self.images_data[idx,1]
         #CM = self.images_data[idx,2]
 
@@ -67,10 +67,10 @@ class SplitDataset(Dataset):
             image = self.transform(image)
         
         if self.target_transform is not None:
-            CM = self.target_transform(CM)
-            EM = self.target_transform(EM)    
+            label = self.target_transform(label)
+                
 
-        return image, EM, CM
+        return image, label
 
 def _train(args):
 
@@ -93,8 +93,7 @@ def _train(args):
                 dist.get_rank(), torch.cuda.is_available(), args.num_gpus))
     """            
 
-    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info("Device Type: {}".format(device))
 
     logger.info("Loading dataset from folder")
