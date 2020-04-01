@@ -16,19 +16,30 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Subset
 from PIL import Image
-#import numpy as np
+import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def _sigmoid(x):
-  y = torch.clamp(x.sigmoid_(), min=1e-4, max=1-1e-4)
-  return y
+def split_to_3datasets(FullDataset):
+    
+    trainval_idx, test_idx = train_test_split(np.arange(len(FullDataset.targets)),test_size=0.3, shuffle=True, stratify=FullDataset.targets)
+    testset=Subset(FullDataset,test_idx)
+    labels=[]
+    for idx in trainval_idx:
+        labels.append(FullDataset[idx][1])
+
+    train_idx, valid_idx = train_test_split(trainval_idx,test_size=0.5, shuffle=True, stratify=labels)
+    trainset = Subset(FullDataset, train_idx)
+    validset = Subset(FullDataset, valid_idx)
+    
+    return trainset, validset, testset
   
 
-class SplitDataset(Dataset):
+class TransformDataset(Dataset):
     
 
     def __init__(self, dataset, transform=None, target_transform=None):
@@ -51,17 +62,6 @@ class SplitDataset(Dataset):
     def __getitem__(self, idx):
         
         image, label = self.images_data[idx]
-        #EM = self.images_data[idx,1]
-        #CM = self.images_data[idx,2]
-
-        """
-        EM = np.asarray(EM)
-        EM = np.expand_dims(EM, axis=2)
-        CM = np.asarray(CM) 
-        CM = np.expand_dims(CM, axis=2) 
-        gt = np.concatenate((EM,CM),axis = 2)
-        maps = Image.fromarray(gt)
-        """
         
         if self.transform is not None:
             image = self.transform(image)
@@ -74,7 +74,7 @@ class SplitDataset(Dataset):
 
 def _train(args):
 
-    class_map = ('bathroom', 'bedroom', 'dining_room', 'Exterior', 'Interior', 'kitchen', 'living_room')
+    
     """
     is_distributed = len(args.hosts) > 1 and args.dist_backend is not None
     logger.debug("Distributed training - {}".format(is_distributed))
@@ -101,18 +101,40 @@ def _train(args):
         [transforms.Resize((224,224)),
          transforms.ToTensor(),
          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+
+    transformaugment = transforms.Compose([transforms.Resize((224,224)),
+                                           transforms.ColorJitter(brightness=0.3,contrast=0.6,hue=0.5),
+                                           transforms.RandomAffine(degrees=20),
+                                           transforms.RandomHorizontalFlip(0.5),
+                                           transforms.ToTensor(),
+                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                                           transforms.RandomErasing()])    
     #target_transform = transforms.Compose([transforms.Resize((224,224)),
     #                                       transforms.ToTensor()])     
 
     root = 'train'
-    trainset = torchvision.datasets.ImageFolder(root, transform = transform, target_transform = None)
+    FullDataset = torchvision.datasets.ImageFolder(root, transform = None, target_transform = None)
+    trainset,validset,testset = split_to_3datasets(FullDataset)
+
+    trainset = TransformDataset(trainset, transform=transformaugment)
     train_loader = DataLoader(trainset, batch_size=args.batch_size,
                                                shuffle=True, num_workers=args.workers)
+    
+    validset = TransformDataset(validset, transform=transform)
+    valid_loader = DataLoader(validset, batch_size=1,
+                                              shuffle=False, num_workers=args.workers)
+
+    testset = TransformDataset(testset, transform=transform)
+    test_loader = DataLoader(testset, batch_size=1,
+                                              shuffle=False, num_workers=args.workers)                                          
+    """
     root = 'val'
     validset = torchvision.datasets.ImageFolder(root, transform = transform, target_transform = None)
     valid_loader = DataLoader(validset, batch_size=1,
                                               shuffle=False, num_workers=args.workers)
-                                             
+    """                                          
+    class_map = FullDataset.classes                                         
 
     logger.info("Model loaded")
     model = EfficientNet.from_pretrained('efficientnet-b0',conv_type='Std')

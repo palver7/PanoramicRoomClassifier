@@ -46,7 +46,7 @@ def _test(args):
                 dist.get_world_size()) + 'Current host rank is {}. Using cuda: {}. Number of gpus: {}'.format(
                 dist.get_rank(), torch.cuda.is_available(), args.num_gpus))
     """            
-    class_map = ('bathroom', 'bedroom', 'dining_room', 'Exterior', 'Interior', 'kitchen', 'living_room')
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info("Device Type: {}".format(device))
 
@@ -55,15 +55,15 @@ def _test(args):
         [transforms.Resize((224,224)),
          transforms.ToTensor(),
          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    target_transform = transforms.Compose([transforms.Resize((224,224)),
-                                           transforms.ToTensor()])     
+    #target_transform = transforms.Compose([transforms.Resize((224,224)),
+    #                                       transforms.ToTensor()])     
 
     root = 'val'
     testset = torchvision.datasets.ImageFolder(root,transform = transform, target_transform = None)
     test_loader = DataLoader(testset, batch_size=args.batch_size,
                                                shuffle=False, num_workers=args.workers)
-                                              
-
+    class_map = ['Exterior','Interior','bathroom','bedrooom','dining_room','kitchen','living_room']                                          
+    
     logger.info("Model loaded")
     model = EfficientNet.from_pretrained('efficientnet-b0',conv_type='Std')
     for param in model.parameters():
@@ -84,7 +84,7 @@ def _test(args):
             inputs, labels = inputs.to(device), labels.to(device)
             model.eval()
             outputs = model(inputs)
-            preds = torch.topk(outputs, k=5).indices.squeeze(0).tolist()        
+            preds = torch.topk(outputs, k=7).indices.squeeze(0).tolist()        
             print('-----')
             for idx in preds:
                 category = class_map[idx]
