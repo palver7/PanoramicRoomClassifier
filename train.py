@@ -1,7 +1,7 @@
 from efficientnet_pytorch.model import EfficientNet
 import argparse
 import logging
-#import sagemaker_containers
+import sagemaker_containers
 import os
 import torch
 import torch.distributed as dist
@@ -37,12 +37,13 @@ def split_to_3datasets(FullDataset):
     validset = Subset(FullDataset, valid_idx)
     
     return trainset, validset, testset
-  
+
 
 class TransformDataset(Dataset):
     
 
     def __init__(self, dataset, transform=None, target_transform=None):
+
         """
         Args:
             json_file (string): Path to the json file with annotations.
@@ -51,7 +52,8 @@ class TransformDataset(Dataset):
             target_file (callable, optional): Optional transform to be applied
                 on a map (edge and corner).    
         """
-    
+
+   
         self.images_data = dataset 
         self.transform = transform
         self.target_transform = target_transform
@@ -72,10 +74,11 @@ class TransformDataset(Dataset):
 
         return image, label
 
+
 def _train(args):
 
     
-    """
+    
     is_distributed = len(args.hosts) > 1 and args.dist_backend is not None
     logger.debug("Distributed training - {}".format(is_distributed))
 
@@ -91,19 +94,20 @@ def _train(args):
                 args.dist_backend,
                 dist.get_world_size()) + 'Current host rank is {}. Using cuda: {}. Number of gpus: {}'.format(
                 dist.get_rank(), torch.cuda.is_available(), args.num_gpus))
-    """            
+                
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info("Device Type: {}".format(device))
 
     logger.info("Loading dataset from folder")
+    img_size = EfficientNet.get_image_size(args.model_name)
     transform = transforms.Compose(
-        [transforms.Resize((224,224)),
+        [transforms.Resize((img_size,img_size)),
          transforms.ToTensor(),
          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
 
-    transformaugment = transforms.Compose([transforms.Resize((224,224)),
+    transformaugment = transforms.Compose([transforms.Resize((img_size,img_size)),
                                            transforms.ColorJitter(brightness=0.3,contrast=0.6,hue=0.5),
                                            transforms.RandomAffine(degrees=20),
                                            transforms.RandomHorizontalFlip(0.5),
@@ -113,7 +117,7 @@ def _train(args):
     #target_transform = transforms.Compose([transforms.Resize((224,224)),
     #                                       transforms.ToTensor()])     
 
-    root = 'train'
+    root = os.path.join(args.data_dir,"train")
     FullDataset = torchvision.datasets.ImageFolder(root, transform = None, target_transform = None)
     trainset,validset,testset = split_to_3datasets(FullDataset)
 
@@ -122,7 +126,7 @@ def _train(args):
                                                shuffle=True, num_workers=args.workers)
     
     validset = TransformDataset(validset, transform=transform)
-    valid_loader = DataLoader(validset, batch_size=1,
+    valid_loader = DataLoader(validset, batch_size=args.batch_size,
                                               shuffle=False, num_workers=args.workers)
 
     testset = TransformDataset(testset, transform=transform)
@@ -134,14 +138,15 @@ def _train(args):
     valid_loader = DataLoader(validset, batch_size=1,
                                               shuffle=False, num_workers=args.workers)
     """                                          
-    class_map = FullDataset.classes                                         
+    class_map = FullDataset.classes
+    num_classes = len(FullDataset.classes)                                         
 
     logger.info("Model loaded")
-    model = EfficientNet.from_pretrained('efficientnet-b0',conv_type='Std')
+    model = EfficientNet.from_pretrained(args.model_name,conv_type='Std')
     for param in model.parameters():
         param.requires_grad = False
     num_features = model._fc.in_features
-    model._fc = nn.Linear(num_features,7)
+    model._fc = nn.Linear(num_features,num_classes)
 
     if torch.cuda.device_count() > 1:
         logger.info("Gpu count: {}".format(torch.cuda.device_count()))
@@ -202,19 +207,27 @@ def _train(args):
                         (epoch, i + 1, running_loss / 1, running_acc / 1))
                         running_loss = 0.0
                         running_acc = 0.0
-                    """       
-                    """
-                    preds = torch.topk(outputs, k=5).indices.squeeze(0).tolist()        
-                    print('-----')
-                    for idx in preds:
-                        category = class_map[idx]
-                        prob = torch.softmax(logits, dim=1)[0, idx].item()
-                        print('{:<75} ({:.2f}%)'.format(category, prob*100))
-                    """ 
+                    """        
                 epoch_loss = running_loss / len(validset)
                 epoch_acc = running_acc.double() / len(validset)    
                 print("loss: %.3f Acc: %.3f" %(epoch_loss, epoch_acc))       
     print('Finished Training')
+    answer = input("Do you want to run inference on testset (y/n) ? ")
+    if answer =='y':
+        with torch.no_grad():
+            for i,data in enumerate(test_loader):
+                inputs, labels = data
+                inputs, labels = inputs.to(device), labels.to(device)
+                model.eval()
+                outputs = model(inputs)
+                preds = torch.topk(outputs, k=num_classes).indices.squeeze(0).tolist()        
+                print('-----')
+                for idx in preds:
+                    category = class_map[idx]
+                    prob = torch.softmax(outputs, dim=1)[0, idx].item()
+                    print('{:<75} ({:.2f}%)'.format(category, prob*100))
+    
+
     return _save_model(model, args.model_dir)
 
 
@@ -225,10 +238,14 @@ def _save_model(model, model_dir):
     torch.save(model.cpu().state_dict(), path)
 
 
-def model_fn(model_dir):
+def model_fn(model_dir,model_name,num_classes):
     logger.info('model_fn')
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = EfficientNet.from_pretrained('efficient-b0',conv_type='Equi')
+    model = EfficientNet.from_pretrained(args.model_name,conv_type='Std')
+    for param in model.parameters():
+        param.requires_grad = False
+    num_features = model._fc.in_features
+    model._fc = nn.Linear(num_features,num_classes)
     if torch.cuda.device_count() > 1:
         logger.info("Gpu count: {}".format(torch.cuda.device_count()))
         model = nn.DataParallel(model)
@@ -250,14 +267,16 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                         help='initial learning rate (default: 0.001)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='momentum (default: 0.9)')
-    parser.add_argument('--model-dir', type=str, default="")
-    #parser.add_argument('--dist_backend', type=str, default='gloo', help='distributed backend (default: gloo)')
+    #parser.add_argument('--model-dir', type=str, default="")
+    parser.add_argument('--model-name', type=str,default="efficientnet-b0")
+    parser.add_argument('--dist_backend', type=str, default='gloo', help='distributed backend (default: gloo)')
 
-    #env = sagemaker_containers.training_env()
-    #parser.add_argument('--hosts', type=list, default=env.hosts)
-    #parser.add_argument('--current-host', type=str, default=env.current_host)
-    #parser.add_argument('--model-dir', type=str, default=env.model_dir)
-    #parser.add_argument('--data-dir', type=str, default=env.channel_input_dirs.get('training'))
-    #parser.add_argument('--num-gpus', type=int, default=env.num_gpus)
+    env = sagemaker_containers.training_env()
+    parser.add_argument('--hosts', type=list, default=env.hosts)
+    parser.add_argument('--current-host', type=str, default=env.current_host)
+    parser.add_argument('--model-dir', type=str, default=env.model_dir)
+    parser.add_argument('--data-dir', type=str, default=env.channel_input_dirs.get('training'))
+    parser.add_argument('--num-gpus', type=int, default=env.num_gpus)
 
     _train(parser.parse_args())
+    
