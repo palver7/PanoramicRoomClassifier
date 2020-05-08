@@ -1,7 +1,7 @@
 from efficientnet_pytorch.model import EfficientNet
 import argparse
 import logging
-import sagemaker_containers
+#import sagemaker_containers
 import os
 import torch
 import torch.distributed as dist
@@ -78,7 +78,7 @@ class TransformDataset(Dataset):
 def _train(args):
 
     
-    
+    """
     is_distributed = len(args.hosts) > 1 and args.dist_backend is not None
     logger.debug("Distributed training - {}".format(is_distributed))
 
@@ -93,8 +93,8 @@ def _train(args):
             'Initialized the distributed environment: \'{}\' backend on {} nodes. '.format(
                 args.dist_backend,
                 dist.get_world_size()) + 'Current host rank is {}. Using cuda: {}. Number of gpus: {}'.format(
-                dist.get_rank(), torch.cuda.is_available(), args.num_gpus))
-                
+                dist.get_rank(), torch.cuda.is_available(), args.num_gpus))          
+    """
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logger.info("Device Type: {}".format(device))
@@ -108,12 +108,12 @@ def _train(args):
 
 
     transformaugment = transforms.Compose([transforms.Resize((img_size,img_size)),
-                                           transforms.ColorJitter(brightness=0.3,contrast=0.6,hue=0.5),
-                                           transforms.RandomAffine(degrees=20),
+                                           transforms.ColorJitter(brightness=0.5,contrast=0.5,saturation=0.5,hue=0.5),
+                                           transforms.RandomAffine(10,translate=(0.2,0.2)),
                                            transforms.RandomHorizontalFlip(0.5),
                                            transforms.ToTensor(),
                                            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                                           transforms.RandomErasing()])    
+                                           transforms.RandomErasing(value='random')])    
     #target_transform = transforms.Compose([transforms.Resize((224,224)),
     #                                       transforms.ToTensor()])     
 
@@ -142,7 +142,11 @@ def _train(args):
     num_classes = len(FullDataset.classes)                                         
 
     logger.info("Model loaded")
-    model = EfficientNet.from_pretrained(args.model_name,conv_type='Std')
+    if(args.conv_type=='Std'):
+        layerdict, offsetdict = None, None
+    elif(args.conv_type=='Equi'):
+        layerdict, offsetdict = torch.load('layertrain.pt'), torch.load('offsettrain.pt') 
+    model = EfficientNet.from_pretrained(args.model_name,conv_type=args.conv_type,layerdict=layerdict,offsetdict=offsetdict)
     for param in model.parameters():
         param.requires_grad = False
     num_features = model._fc.in_features
@@ -188,7 +192,7 @@ def _train(args):
             """    
         epoch_loss = running_loss / len(trainset)
         epoch_acc = running_acc.double() / len(trainset)    
-        print("loss: %.3f Acc: %.3f" %(epoch_loss, epoch_acc))
+        print("train loss: %.3f train Acc: %.3f" %(epoch_loss, epoch_acc))
         # validation phase
         if(epoch%1==0):
             with torch.no_grad():
@@ -210,7 +214,7 @@ def _train(args):
                     """        
                 epoch_loss = running_loss / len(validset)
                 epoch_acc = running_acc.double() / len(validset)    
-                print("loss: %.3f Acc: %.3f" %(epoch_loss, epoch_acc))       
+                print("validation loss: %.3f validation Acc: %.3f" %(epoch_loss, epoch_acc))       
     print('Finished Training')
     answer = input("Do you want to run inference on testset (y/n) ? ")
     if answer =='y':
@@ -241,7 +245,7 @@ def _save_model(model, model_dir):
 def model_fn(model_dir,model_name,num_classes):
     logger.info('model_fn')
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = EfficientNet.from_pretrained(args.model_name,conv_type='Std')
+    model = EfficientNet.from_pretrained(model_name,conv_type='Std')
     for param in model.parameters():
         param.requires_grad = False
     num_features = model._fc.in_features
@@ -267,16 +271,18 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                         help='initial learning rate (default: 0.001)')
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M', help='momentum (default: 0.9)')
-    #parser.add_argument('--model-dir', type=str, default="")
+    parser.add_argument('--model-dir', type=str, default="")
+    parser.add_argument('--data-dir', type=str, default="")
     parser.add_argument('--model-name', type=str,default="efficientnet-b0")
-    parser.add_argument('--dist_backend', type=str, default='gloo', help='distributed backend (default: gloo)')
-
-    env = sagemaker_containers.training_env()
-    parser.add_argument('--hosts', type=list, default=env.hosts)
-    parser.add_argument('--current-host', type=str, default=env.current_host)
-    parser.add_argument('--model-dir', type=str, default=env.model_dir)
-    parser.add_argument('--data-dir', type=str, default=env.channel_input_dirs.get('training'))
-    parser.add_argument('--num-gpus', type=int, default=env.num_gpus)
+    parser.add_argument('--conv_type', type=str,default="Std")
+    
+    #parser.add_argument('--dist_backend', type=str, default='gloo', help='distributed backend (default: gloo)')
+    #env = sagemaker_containers.training_env()
+    #parser.add_argument('--hosts', type=list, default=env.hosts)
+    #parser.add_argument('--current-host', type=str, default=env.current_host)
+    #parser.add_argument('--model-dir', type=str, default=env.model_dir)
+    #parser.add_argument('--data-dir', type=str, default=env.channel_input_dirs.get('training'))
+    #parser.add_argument('--num-gpus', type=int, default=env.num_gpus)
 
     _train(parser.parse_args())
     

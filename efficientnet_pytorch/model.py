@@ -66,7 +66,7 @@ class MBConvBlock(nn.Module):
         self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
         self._swish = MemoryEfficientSwish()
 
-    def forward(self, inputs, drop_connect_rate=None):
+    def forward(self, inputs, drop_connect_rate=None, offset=None):
         """
         :param inputs: input tensor
         :param drop_connect_rate: drop connect rate (float, between 0 and 1)
@@ -77,7 +77,10 @@ class MBConvBlock(nn.Module):
         x = inputs
         if self._block_args.expand_ratio != 1:
             x = self._swish(self._bn0(self._expand_conv(inputs)))
-        x = self._swish(self._bn1(self._depthwise_conv(x)))
+        if self._conv_type == 'Equi':
+            x = self._swish(self._bn1(self._depthwise_conv(x,offset)))
+        elif self._conv_type=='Std':
+            x = self._swish(self._bn1(self._depthwise_conv(x)))    
 
         # Squeeze and Excitation
         if self.has_se:
@@ -113,13 +116,15 @@ class EfficientNet(nn.Module):
 
     """
 
-    def __init__(self, blocks_args=None, global_params=None, conv_type=None):
+    def __init__(self, blocks_args=None, global_params=None, conv_type=None, layerdict=None, offsetdict=None):
         super().__init__()
         assert isinstance(blocks_args, list), 'blocks_args should be a list'
         assert len(blocks_args) > 0, 'block args must be greater than 0'
         self._global_params = global_params
         self._blocks_args = blocks_args
         self._conv_type = conv_type
+        self._offsetdict=offsetdict
+        self._layerdict=layerdict
 
         # Get static or dynamic convolution depending on image size
         Conv2d = get_same_padding_conv2d(image_size=global_params.image_size, conv_type=self._conv_type)
@@ -176,16 +181,24 @@ class EfficientNet(nn.Module):
         """ Returns output of the final convolution layer """
 
         # Stem
-        x = self._swish(self._bn0(self._conv_stem(inputs)))
-
+        index = 0
+        if self._conv_type == 'Std' :
+            x = self._swish(self._bn0(self._conv_stem(inputs)))
+        elif self._conv_type == 'Equi' :    
+            x = self._swish(self._bn0(self._conv_stem(inputs,self._offsetdict[self._layerdict[index]].to(inputs.device))))
         # Blocks
         for idx, block in enumerate(self._blocks):
             drop_connect_rate = self._global_params.drop_connect_rate
             if drop_connect_rate:
                 drop_connect_rate *= float(idx) / len(self._blocks)
-            x = block(x, drop_connect_rate=drop_connect_rate)
+            index += 1
+            if self._conv_type == 'Std' :    
+                x = block(x, drop_connect_rate=drop_connect_rate)
+            elif self._conv_type == 'Equi' :
+                x = block(x, drop_connect_rate=drop_connect_rate, offset=self._offsetdict[self._layerdict[index]].to(inputs.device))    
 
         # Head
+        index += 1
         x = self._swish(self._bn1(self._conv_head(x)))
 
         return x
