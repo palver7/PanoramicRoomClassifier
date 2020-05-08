@@ -145,8 +145,8 @@ def offcalc(batchsize=4):
                  1:((112,112),(3,3),(1,1)),
                  2:((56,56),(3,3),(2,2)),
                  3:((56,56),(3,3),(1,1)),
-                 4:((56,56),(5,5),(2,2)),
-                 5:((56,56),(5,5),(1,1)),
+                 4:((28,28),(5,5),(2,2)),
+                 5:((28,28),(5,5),(1,1)),
                  6:((14,14),(3,3),(2,2)),
                  7:((14,14),(3,3),(1,1)),
                  8:((14,14),(3,3),(1,1)),
@@ -194,6 +194,6 @@ if __name__ == '__main__':
     args = parser.parse_args() 
 
     layerdict,offsetdict = offcalc(batchsize=args.batchsize)
-    torch.save(layerdict,'../layer{}.pt'.format(args.mode))
-    torch.save(offsetdict,'../offset{}.pt'.format(args.mode)) 
+    torch.save(layerdict,'./layer{}.pt'.format(args.mode))
+    torch.save(offsetdict,'./offset{}.pt'.format(args.mode)) 
     
