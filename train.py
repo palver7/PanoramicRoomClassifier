@@ -19,6 +19,8 @@ from PIL import Image
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import time
+from torch.utils.tensorboard import SummaryWriter
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -159,8 +161,10 @@ def _train(args):
     model = model.to(device)
     criterion = nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    writer= SummaryWriter(log_dir="runs/{}".format(args.logdir),comment="visualising losses of training and validation")
 
     for epoch in range(1, args.epochs+1):
+        epochtime1=time.time()
         # training phase
         running_loss = 0.0
         running_acc = 0.0
@@ -192,7 +196,9 @@ def _train(args):
             """    
         epoch_loss = running_loss / len(trainset)
         epoch_acc = running_acc.double() / len(trainset)    
-        print("train loss: %.3f train Acc: %.3f" %(epoch_loss, epoch_acc))
+        #print("train loss: %.3f train Acc: %.3f" %(epoch_loss, epoch_acc))
+        writer.add_scalar("training_loss", epoch_loss,epoch)
+        writer.add_scalar("training_acc", epoch_acc,epoch)
         # validation phase
         if(epoch%1==0):
             with torch.no_grad():
@@ -214,7 +220,13 @@ def _train(args):
                     """        
                 epoch_loss = running_loss / len(validset)
                 epoch_acc = running_acc.double() / len(validset)    
-                print("validation loss: %.3f validation Acc: %.3f" %(epoch_loss, epoch_acc))       
+                #print("validation loss: %.3f validation Acc: %.3f" %(epoch_loss, epoch_acc))   
+                writer.add_scalar("validation_loss", epoch_loss,epoch)
+                writer.add_scalar("validation_acc", epoch_acc,epoch)
+        epochtime2 = time.time()
+    epochdiff = epochtime2-epochtime1             
+    writer.close()   
+    print ("time for 1 complete epoch: ", epochdiff)            
     print('Finished Training')
     answer = input("Do you want to run inference on testset (y/n) ? ")
     if answer =='y':
@@ -275,6 +287,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', type=str, default="")
     parser.add_argument('--model-name', type=str,default="efficientnet-b0")
     parser.add_argument('--conv_type', type=str,default="Std")
+    parser.add_argument('--logdir', type=str,default="EfficNetClassifier_30epochs", help='save directory for tensorboard event files')
     
     #parser.add_argument('--dist_backend', type=str, default='gloo', help='distributed backend (default: gloo)')
     #env = sagemaker_containers.training_env()
@@ -283,6 +296,11 @@ if __name__ == '__main__':
     #parser.add_argument('--model-dir', type=str, default=env.model_dir)
     #parser.add_argument('--data-dir', type=str, default=env.channel_input_dirs.get('training'))
     #parser.add_argument('--num-gpus', type=int, default=env.num_gpus)
-
+    
+    time1= time.time()
     _train(parser.parse_args())
+    time2=time.time()
+    diff = time2 - time1
+    print("total execution time: ",diff," seconds")
+    print("total execution time: ",diff/60," minutes")
     
