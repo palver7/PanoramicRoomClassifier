@@ -202,6 +202,7 @@ def _train(args):
         # validation phase
         if(epoch%1==0):
             with torch.no_grad():
+                running_loss = 0.0
                 running_acc = 0.0
                 for i, data in enumerate(valid_loader):
                     # get the inputs
@@ -209,7 +210,11 @@ def _train(args):
                     inputs, labels = inputs.to(device), labels.to(device)
                     model.eval()
                     outputs = model(inputs)
+                    loss = criterion(outputs,labels)
                     _, preds = torch.max(outputs, 1)
+                    
+                    # print statistics
+                    running_loss += loss.item()
                     running_acc += torch.sum(preds == labels.data)
                     """
                     if i % 1 == 0:  # print every 1 mini-batches
@@ -228,6 +233,7 @@ def _train(args):
     writer.close()   
     print ("time for 1 complete epoch: ", epochdiff)            
     print('Finished Training')
+    """
     answer = input("Do you want to run inference on testset (y/n) ? ")
     if answer =='y':
         with torch.no_grad():
@@ -242,7 +248,7 @@ def _train(args):
                     category = class_map[idx]
                     prob = torch.softmax(outputs, dim=1)[0, idx].item()
                     print('{:<75} ({:.2f}%)'.format(category, prob*100))
-    
+    """
 
     return _save_model(model, args.model_dir)
 
