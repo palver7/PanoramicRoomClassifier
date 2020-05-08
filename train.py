@@ -293,7 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', type=str, default="")
     parser.add_argument('--model-name', type=str,default="efficientnet-b0")
     parser.add_argument('--conv_type', type=str,default="Std")
-    parser.add_argument('--logdir', type=str,default="EfficNetClassifier_30epochs", help='save directory for tensorboard event files')
+    parser.add_argument('--logdir', type=str,default="EfficNetClassifierStd_30epochs", help='save directory for tensorboard event files')
     
     #parser.add_argument('--dist_backend', type=str, default='gloo', help='distributed backend (default: gloo)')
     #env = sagemaker_containers.training_env()
