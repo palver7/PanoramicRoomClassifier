@@ -20,7 +20,7 @@ srsly==1.0.2
 stevedore==1.32.0
 thinc==7.4.0
 tqdm==4.45.0
-urllib3==1.25.8
+urllib3==1.26.5
 virtualenv==20.0.16
 virtualenv-clone==0.5.4
 virtualenvwrapper==4.8.4
